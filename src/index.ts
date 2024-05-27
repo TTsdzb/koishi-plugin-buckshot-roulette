@@ -267,7 +267,7 @@ export function apply(ctx: Context, config: Config) {
     },
   };
 
-  ctx.command("恶魔轮盘", "恶魔轮盘");
+  ctx.command("恶魔轮盘", "WONDERFUL PLAY，SHALL WE？💀");
 
   ctx.command("恶魔轮盘.创建游戏").action(({ session }) => {
     if (game[session.channelId] === undefined) {
@@ -506,12 +506,14 @@ export function apply(ctx: Context, config: Config) {
               await session.send(result);
               delete game[session.channelId];
               return dedent`══恶魔轮盘══<br/>
-                            ${h.at(cache[player].id)}倒在了桌前<br/>
+                            ${h.at(
+                              cache[player].id
+                            )}倒在了桌前 -NEITHER HEAVEN NOR EARTH...<br/>
                             ${h.at(
                               cache[
                                 player === "player1" ? "player2" : "player1"
                               ].id
-                            )}获得了胜利，并带着一箱子钱离开了<br/>
+                            )}获得了胜利，并带着一箱子钱离开了 -IS THIS WHAT U WANT?<br/>
                             游戏结束`;
             }
           } else {
