@@ -22,6 +22,9 @@
   "dependencies": {
     "dedent": "^1.5.3"
   },
+  "devDependencies": {
+    "koishi-plugin-adapter-onebot": "^6.5.3"
+  },
   "peerDependencies": {
     "koishi": "^4.17.4"
   }

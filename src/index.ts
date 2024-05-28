@@ -1,5 +1,7 @@
-import { Context, Schema, h, Random } from "koishi";
+import { Context, Session, Schema, h, Random } from "koishi";
 import dedent from "dedent";
+
+import {} from "koishi-plugin-adapter-onebot";
 
 export const name = "buckshot-roulette2";
 
@@ -16,6 +18,20 @@ export const Config: Schema<Config> = Schema.object({
     .description("对战信息中总是显示道具描述")
     .default(true),
 });
+
+async function checkRole(session: Session): Promise<boolean> {
+  const botInfo = await session.onebot.getGroupMemberInfo(
+    session.channelId,
+    session.bot.selfId
+  );
+  if (botInfo["role"] === "member") return false;
+  if (botInfo["role"] === "owner") return true;
+  const userInfo = await session.onebot.getGroupMemberInfo(
+    session.channelId,
+    session.userId
+  );
+  return userInfo["role"] === "member";
+}
 
 export function apply(ctx: Context, config: Config) {
   let game = {};
@@ -269,37 +285,56 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.command("恶魔轮盘", "WONDERFUL PLAY，SHALL WE？💀");
 
-  ctx.command("恶魔轮盘.创建游戏").action(({ session }) => {
-    if (game[session.channelId] === undefined) {
-      game[session.channelId] = {
-        player1: {
-          name: session.username,
-          id: session.userId,
-          hp: 6,
-          item: [],
-          handcuff: false,
-        },
-        status: "waiting",
-      };
-      return dedent`══恶魔轮盘══
+  ctx
+    .command("恶魔轮盘.创建游戏")
+    .option(
+      "time",
+      "-t <time:posint> 设定死亡惩罚，只在Onebot平台生效，默认关闭",
+      {
+        fallback: 0,
+      }
+    )
+    .action(async ({ session, options }) => {
+      if (session.platform !== "onebot") {
+        await session.send("非Onebot平台，死亡惩罚已禁用");
+        options.time = 0;
+      }
+      if (options.time && !(await checkRole(session)))
+        return "══恶魔轮盘══\n你以为你的权力大于一切？你不能创建这个游戏！";
+      if (game[session.channelId] === undefined) {
+        game[session.channelId] = {
+          player1: {
+            name: session.username,
+            id: session.userId,
+            hp: 6,
+            item: [],
+            handcuff: false,
+          },
+          status: "waiting",
+          time: options.time,
+        };
+        return dedent`══恶魔轮盘══
                       游戏创建成功
                       玩家1：${session.username}(${session.userId})
                       玩家2：等待中
+                      死亡惩罚：${options.time ? `${options.time}秒` : "无"}
                       发送“恶魔轮盘.加入游戏”以加入游戏`;
-    } else if (game[session.channelId].status === "waiting") {
-      return "══恶魔轮盘══\n当前频道已有游戏正在等待玩家\n发送“恶魔轮盘.加入游戏”以加入游戏";
-    } else {
-      return "══恶魔轮盘══\n当前频道已有游戏正在进行中";
-    }
-  });
+      } else if (game[session.channelId].status === "waiting") {
+        return "══恶魔轮盘══\n当前频道已有游戏正在等待玩家\n发送“恶魔轮盘.加入游戏”以加入游戏";
+      } else {
+        return "══恶魔轮盘══\n当前频道已有游戏正在进行中";
+      }
+    });
 
-  ctx.command("恶魔轮盘.加入游戏").action(({ session }) => {
+  ctx.command("恶魔轮盘.加入游戏").action(async ({ session }) => {
     if (game[session.channelId] === undefined) {
       return "══恶魔轮盘══\n当前频道没有可以加入的游戏\n发送“恶魔轮盘.创建游戏”以创建游戏";
     } else if (game[session.channelId].status !== "waiting") {
       return "══恶魔轮盘══\n当前频道已有游戏正在进行中";
     } else if (game[session.channelId].player1.id === session.userId) {
       return "══恶魔轮盘══\n你不能加入你自己创建的游戏";
+    } else if (game[session.channelId].time && !(await checkRole(session))) {
+      return "══恶魔轮盘══\n你以为你的权力大于一切？你不能加入这个游戏！";
     } else {
       game[session.channelId].player2 = {
         name: session.username,
@@ -315,6 +350,11 @@ export function apply(ctx: Context, config: Config) {
         game[session.channelId].player1.id
       })
                       玩家2：${session.username}(${session.userId})
+                      死亡惩罚：${
+                        game[session.channelId].time
+                          ? `${game[session.channelId].time}秒`
+                          : "无"
+                      }
                       由玩家1${h.at(
                         game[session.channelId].player1.id
                       )}发送“恶魔轮盘.开始游戏”以开始游戏`;
@@ -505,6 +545,12 @@ export function apply(ctx: Context, config: Config) {
             if (cache[player].hp <= 0) {
               await session.send(result);
               delete game[session.channelId];
+              if (cache.time)
+                await session.onebot.setGroupBan(
+                  session.channelId,
+                  cache[player].id,
+                  cache.time
+                );
               return dedent`══恶魔轮盘══<br/>
                             ${h.at(
                               cache[player].id
@@ -523,15 +569,21 @@ export function apply(ctx: Context, config: Config) {
             if (cache[player === "player1" ? "player2" : "player1"].hp <= 0) {
               await session.send(result);
               delete game[session.channelId];
+              if (cache.time)
+                await session.onebot.setGroupBan(
+                  session.channelId,
+                  cache[player === "player1" ? "player2" : "player1"].id,
+                  cache.time
+                );
               return dedent`══恶魔轮盘══<br/>
                             ${h.at(
                               cache[
                                 player === "player1" ? "player2" : "player1"
                               ].id
-                            )}倒在了桌前<br/>
+                            )}倒在了桌前 -NEITHER HEAVEN NOR EARTH...<br/>
                             ${h.at(
                               cache[player].id
-                            )}获得了胜利，并带着一箱子钱离开了<br/>
+                            )}获得了胜利，并带着一箱子钱离开了 -IS THIS WHAT U WANT?<br/>
                             游戏结束`;
             }
           }
